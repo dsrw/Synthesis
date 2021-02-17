@@ -110,10 +110,12 @@ implEvent(waterMachine, Over100):
 #
 # `onEntry` and `onExit` are directly inlined in the state machine.
 
-onEntry(waterMachine, [Solid, Liquid, Gas]):
+onEntry(waterMachine, [Solid, Gas, Liquid, Plasma]):
+  yield SynthesisCurrentState
   let oldTemp = temp
-  temp = tempFeed.pop()
-  echo "Temperature: ", temp
+  if SynthesisCurrentState != Plasma:
+    temp = tempFeed.pop()
+    echo "Temperature: ", temp
 
 # `behaviors`
 # -------------------------------------------
@@ -169,7 +171,7 @@ behavior(waterMachine):
   event: Between0and100
   transition:
     assert 0 <= temp and temp <= 100
-    echo "Ice is melting into Water.\n"
+    echo "Ice is melting into Water."
 
 behavior(waterMachine):
   ini: Liquid
@@ -177,7 +179,7 @@ behavior(waterMachine):
   event: Over100
   transition:
     assert temp >= 100
-    echo "Water is vaporizing into Vapor.\n"
+    echo "Water is vaporizing into Vapor."
 
 behavior(waterMachine):
   ini: Solid
@@ -185,7 +187,7 @@ behavior(waterMachine):
   event: Over100
   transition:
     assert temp >= 100
-    echo "Ice is sublimating into Vapor.\n"
+    echo "Ice is sublimating into Vapor."
 
 behavior(waterMachine):
   ini: Gas
@@ -193,7 +195,7 @@ behavior(waterMachine):
   event: Below0
   transition:
     assert temp <= 0
-    echo "Vapor is depositing into Ice.\n"
+    echo "Vapor is depositing into Ice."
 
 behavior(waterMachine):
   ini: Gas
@@ -201,7 +203,7 @@ behavior(waterMachine):
   event: Between0and100
   transition:
     assert 0 <= temp and temp <= 100
-    echo "Vapor is condensing into Water.\n"
+    echo "Vapor is condensing into Water."
 
 behavior(waterMachine):
   ini: Liquid
@@ -209,14 +211,14 @@ behavior(waterMachine):
   event: Below0
   transition:
     assert temp <= 0
-    echo "Water is freezing into Ice.\n"
+    echo "Water is freezing into Ice."
 
 # Steady state, if no phase change was triggered, we stay in our current phase
 behavior(waterMachine):
   steady: [Solid, Liquid, Gas]
   transition:
     # Note how we use the oldTemp that was declared in `onEntry`
-    echo "Changing temperature from ", oldTemp, " to ", temp, " didn't change phase. How exciting!\n"
+    echo "Changing temperature from ", oldTemp, " to ", temp, " didn't change phase. How exciting!"
 
 # `Synthesize`
 # -------------------------------------------
@@ -232,7 +234,7 @@ behavior(waterMachine):
 #
 # The generated code can also be copy-pasted for debugging or for extension.
 synthesize(waterMachine):
-  proc observeWater(tempFeed: var seq[float])
+  iterator observeWater(tempFeed: var seq[float]): Phase {.closure.}
 
 # Dump in graphviz format ".dot"
 # -------------------------------------------
@@ -247,7 +249,11 @@ echo "\n"
 var obs = newSeqWith(20, rand(-50.0..150.0))
 echo obs
 echo "\n\n"
-observeWater(obs)
+let machine = observeWater
+while not finished(machine):
+  let state = machine(obs)
+  echo "current state: ", state, "\n"
+
 
 # Output
 # -------------------------------------------

@@ -367,8 +367,14 @@ proc nextStateOrBreak(
   # quote do causes issue with identifier resolution
   let stateExit = if stateExit.isNil: nnkDiscardStmt.newTree(newLit"Terminating (no explicit terminal state)")
                   else: stateExit
-  let next = if newState == terminalState: nnkBreakStmt.newTree(breakState)
-             else: newAssignment(gotoState, ident(newState))
+  let next = if newState == terminalState:
+    nnkBreakStmt.newTree(breakState)
+  else:
+    let assignment = newAssignment(gotoState, ident(newState))
+    when defined(loopSynthesis):
+      nnkStmtList.newTree(assignment, newNimNode(nnkContinueStmt).add(newEmptyNode()))
+    else:
+      assignment
 
   if not event.isNil:
     stateBody.add nnkIfStmt.newTree(
@@ -398,7 +404,7 @@ macro synthesize*(automaton, fnSignature: untyped): untyped =
   # Sanity checks
   # ---------------------------------------------------
   fnSignature.expectKind(nnkStmtList)
-  fnSignature[0].expectKind({nnkProcDef, nnkFuncDef})
+  fnSignature[0].expectKind({nnkProcDef, nnkFuncDef, nnkIteratorDef})
   fnSignature.expectLen(1)
 
   let procDef = fnSignature[0]
@@ -421,8 +427,12 @@ macro synthesize*(automaton, fnSignature: untyped): untyped =
 
   let initState = ident(A.initial)
   var steadyBlock = newStmtList()
-  steadyBlock.add quote do:
-    var `State` {.goto.} = `initState`
+  when defined(loopSynthesis):
+    steadyBlock.add quote do:
+      var `State` = `initState`
+  else:
+    steadyBlock.add quote do:
+      var `State` {.goto.} = `initState`
 
   var SM = nnkCaseStmt.newTree(State)
   for state in A.states:
@@ -478,8 +488,13 @@ macro synthesize*(automaton, fnSignature: untyped): untyped =
       ident($state),
       stateBody
     )
+  when defined(loopSynthesis):
+    steadyBlock.add(
+      nnkWhileStmt.newTree(new_lit(true)).add(SM)
+    )
+  else:
+    steadyBlock.add(SM)
 
-  steadyBlock.add SM
   body.add nnkBlockStmt.newTree(
     SteadyStates,
     steadyBlock
